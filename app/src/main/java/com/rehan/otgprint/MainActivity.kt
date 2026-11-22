@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DebugLog.init(applicationContext)
 
         val pad = dp(20)
         val root = LinearLayout(this).apply {
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
         root.addView(button("اكتشاف الطابعة وطلب الإذن") { detect() })
         root.addView(button("طباعة صفحة اختبار") { printTest() })
         root.addView(button("طباعة نص بسيط (اختبار RAW)") { printRaw() })
+        root.addView(button("مسح السجل") { DebugLog.clear() })
         root.addView(button("اختيار ملف PDF وطباعته") { picker.launch(arrayOf("application/pdf")) })
 
         val photo = CheckBox(this).apply {
@@ -82,12 +84,17 @@ class MainActivity : ComponentActivity() {
             textSize = 12f
             setTextIsSelectable(true)
             setPadding(0, dp(16), 0, 0)
-            text = "السجل:\n"
+            text = "السجل:\n" + DebugLog.text()
         }
         root.addView(logView)
         DebugLog.onChange = { runOnUiThread { logView.text = "السجل:\n" + DebugLog.text() } }
 
         setContentView(ScrollView(this).apply { addView(root) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::logView.isInitialized) logView.text = "السجل:\n" + DebugLog.text()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()

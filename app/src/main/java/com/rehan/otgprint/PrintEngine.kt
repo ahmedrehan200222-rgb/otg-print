@@ -42,6 +42,7 @@ object PrintEngine {
         val renderer = PdfRenderer(pfd)
         try {
             val total = renderer.pageCount
+            DebugLog.d("عدد صفحات الـ PDF = $total")
             openPrinter(ctx).use { session ->
                 session.write(PclEncoder.jobStart())
 
