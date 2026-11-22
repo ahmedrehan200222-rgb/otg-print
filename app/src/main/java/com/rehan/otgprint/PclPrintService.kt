@@ -1,5 +1,7 @@
 package com.rehan.otgprint
 
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.print.PrintAttributes
 import android.print.PrintJobId
@@ -36,19 +38,36 @@ class PclPrintService : PrintService() {
         printJob.cancel()
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     override fun onPrintJobQueued(printJob: PrintJob) {
         DebugLog.init(applicationContext)
         DebugLog.d("[خدمة الطباعة] وصلت مهمة طباعة")
-        printJob.start()
+
+        // كل التعامل مع PrintJob لازم يكون على الـ main thread
         val id = printJob.id
+        val src: ParcelFileDescriptor?
+        val copies: Int
+        try {
+            printJob.start()
+            src = printJob.document.data
+            copies = maxOf(1, printJob.info.copies)
+        } catch (e: Throwable) {
+            DebugLog.d("[خدمة الطباعة] فشلت: $e")
+            try { printJob.fail(e.message ?: "فشلت الطباعة") } catch (_: Throwable) {}
+            return
+        }
+        if (src == null) {
+            DebugLog.d("[خدمة الطباعة] فشلت: مفيش مستند في المهمة")
+            printJob.fail("مفيش مستند في المهمة")
+            return
+        }
+        DebugLog.d("[خدمة الطباعة] عدد النسخ $copies")
 
         Thread {
             var tmp: File? = null
             try {
-                val src = printJob.document.data
-                    ?: throw IllegalStateException("مفيش مستند في المهمة")
-
-                // ننسخ المستند لملف مؤقت عشان PdfRenderer محتاج ملف يقبل التقديم والرجوع (seekable)
+                // ننسخ المستند لملف مؤقت عشان PdfRenderer محتاج ملف seekable
                 tmp = File(cacheDir, "job-${System.currentTimeMillis()}.pdf")
                 ParcelFileDescriptor.AutoCloseInputStream(src).use { input ->
                     tmp.outputStream().use { out -> input.copyTo(out) }
@@ -56,9 +75,6 @@ class PclPrintService : PrintService() {
                 DebugLog.d("[خدمة الطباعة] حجم الملف ${tmp.length()} بايت")
 
                 val local = ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_READ_ONLY)
-                val copies = maxOf(1, printJob.info.copies)
-                DebugLog.d("[خدمة الطباعة] عدد النسخ $copies")
-
                 PrintEngine.printPdf(
                     ctx = applicationContext,
                     pfd = local,
@@ -69,11 +85,13 @@ class PclPrintService : PrintService() {
 
                 if (!cancelled.contains(id)) {
                     DebugLog.d("[خدمة الطباعة] المهمة خلصت ✔")
-                    printJob.complete()
+                    mainHandler.post { try { printJob.complete() } catch (_: Throwable) {} }
                 }
             } catch (e: Throwable) {
                 DebugLog.d("[خدمة الطباعة] فشلت: $e")
-                try { if (!printJob.isCancelled) printJob.fail(e.message ?: "فشلت الطباعة") } catch (_: Throwable) {}
+                if (!cancelled.contains(id)) {
+                    mainHandler.post { try { printJob.fail(e.message ?: "فشلت الطباعة") } catch (_: Throwable) {} }
+                }
             } finally {
                 cancelled.remove(id)
                 try { tmp?.delete() } catch (_: Throwable) {}
