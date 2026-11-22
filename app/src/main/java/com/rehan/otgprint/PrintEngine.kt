@@ -24,7 +24,9 @@ object PrintEngine {
     private fun openPrinter(ctx: Context): UsbPrinter.Session {
         val printer = UsbPrinter(ctx)
         val dev = printer.findDevice() ?: throw IOException("مفيش طابعة USB متوصلة")
+        DebugLog.d("لقيت الطابعة، بطلب الإذن...")
         if (!printer.requestPermissionBlocking(dev)) throw IOException("إذن USB مش ممنوح")
+        DebugLog.d("الإذن تمام، بفتح الاتصال...")
         return printer.open(dev)
     }
 
@@ -89,12 +91,26 @@ object PrintEngine {
         }
     }
 
+    /** يبعت نص عادي للطابعة (اختبار بسيط من غير raster). */
+    fun printRawText(ctx: Context, text: String) {
+        openPrinter(ctx).use { session ->
+            val esc = 0x1B.toChar()
+            session.write("${esc}E".toByteArray(Charsets.ISO_8859_1))
+            session.write(text.toByteArray(Charsets.ISO_8859_1))
+            session.write(byteArrayOf(0x0C))
+            session.write("${esc}E".toByteArray(Charsets.ISO_8859_1))
+        }
+    }
+
     /** يطبع صفحة واحدة جاهزة كـ Bitmap بحجم CANVAS (للاختبار). */
     fun printBitmap(ctx: Context, canvas: Bitmap) {
         val photo = isPhotoMode(ctx)
         openPrinter(ctx).use { session ->
             session.write(PclEncoder.jobStart())
-            session.write(PclEncoder.encodePage(canvas, photo))
+            DebugLog.d("بحوّل الصفحة لـ PCL...")
+            val page = PclEncoder.encodePage(canvas, photo)
+            DebugLog.d("حجم الصفحة ${page.size} بايت")
+            session.write(page)
             session.write(PclEncoder.jobEnd())
         }
     }

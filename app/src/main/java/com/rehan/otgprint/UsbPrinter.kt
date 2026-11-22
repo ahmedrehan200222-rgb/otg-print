@@ -69,6 +69,7 @@ class UsbPrinter(private val ctx: Context) {
 
     /** يفتح اتصال بالطابعة ويرجّع Session للكتابة. */
     fun open(d: UsbDevice): Session {
+        DebugLog.d("جهاز VID=%04X PID=%04X عدد الـ interfaces=%d".format(d.vendorId, d.productId, d.interfaceCount))
         val candidates = ArrayList<UsbInterface>()
         for (i in 0 until d.interfaceCount) {
             val itf = d.getInterface(i)
@@ -80,9 +81,11 @@ class UsbPrinter(private val ctx: Context) {
         }
 
         for (itf in sorted) {
+            DebugLog.d("interface #${itf.id} alt=${itf.alternateSetting} protocol=${itf.interfaceProtocol} endpoints=${itf.endpointCount}")
             var out: UsbEndpoint? = null
             for (e in 0 until itf.endpointCount) {
                 val ep = itf.getEndpoint(e)
+                DebugLog.d("  endpoint 0x%02X type=%d dir=%d maxPacket=%d".format(ep.address, ep.type, ep.direction, ep.maxPacketSize))
                 if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK &&
                     ep.direction == UsbConstants.USB_DIR_OUT
                 ) { out = ep; break }
@@ -90,10 +93,13 @@ class UsbPrinter(private val ctx: Context) {
             if (out == null) continue
 
             val conn = usb.openDevice(d) ?: throw IOException("تعذّر فتح الجهاز")
-            if (!conn.claimInterface(itf, true)) {
+            val claimed = conn.claimInterface(itf, true)
+            DebugLog.d("claimInterface = $claimed")
+            if (!claimed) {
                 conn.close()
                 continue
             }
+            if (itf.alternateSetting != 0) conn.setInterface(itf)
             return Session(conn, itf, out)
         }
         throw IOException("مفيش Endpoint صالح للطباعة في الجهاز ده")
@@ -119,6 +125,7 @@ class UsbPrinter(private val ctx: Context) {
                 zeroTries = 0
                 off += r
             }
+            DebugLog.d("اتبعت ${data.size} بايت للطابعة")
         }
 
         override fun close() {

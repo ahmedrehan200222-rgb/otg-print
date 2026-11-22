@@ -23,6 +23,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
 
     private lateinit var status: TextView
+    private lateinit var logView: TextView
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) printUri(uri)
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
 
         root.addView(button("اكتشاف الطابعة وطلب الإذن") { detect() })
         root.addView(button("طباعة صفحة اختبار") { printTest() })
+        root.addView(button("طباعة نص بسيط (اختبار RAW)") { printRaw() })
         root.addView(button("اختيار ملف PDF وطباعته") { picker.launch(arrayOf("application/pdf")) })
 
         val photo = CheckBox(this).apply {
@@ -76,12 +78,24 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.START
         })
 
+        logView = TextView(this).apply {
+            textSize = 12f
+            setTextIsSelectable(true)
+            setPadding(0, dp(16), 0, 0)
+            text = "السجل:\n"
+        }
+        root.addView(logView)
+        DebugLog.onChange = { runOnUiThread { logView.text = "السجل:\n" + DebugLog.text() } }
+
         setContentView(ScrollView(this).apply { addView(root) })
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun setStatus(t: String) = runOnUiThread { status.text = t }
+    private fun setStatus(t: String) {
+        DebugLog.d(t)
+        runOnUiThread { status.text = t }
+    }
 
     private fun detect() {
         Thread {
@@ -96,8 +110,20 @@ class MainActivity : ComponentActivity() {
                 val ok = p.requestPermissionBlocking(d)
                 setStatus(if (ok) "الطابعة جاهزة ✔ (VID=%04X, PID=%04X)".format(d.vendorId, d.productId)
                           else "الإذن اترفض. جرّب تاني ووافق.")
-            } catch (e: Exception) {
-                setStatus("خطأ: ${e.message}")
+            } catch (e: Throwable) {
+                setStatus("خطأ: $e")
+            }
+        }.start()
+    }
+
+    private fun printRaw() {
+        Thread {
+            try {
+                setStatus("بابعت نص بسيط للطابعة...")
+                PrintEngine.printRawText(this, "OTG RAW TEST\r\nHello from Galaxy A35\r\n1234567890\r\n")
+                setStatus("اتبعت النص البسيط ✔")
+            } catch (e: Throwable) {
+                setStatus("خطأ: $e")
             }
         }.start()
     }
@@ -108,8 +134,8 @@ class MainActivity : ComponentActivity() {
                 setStatus("جاري تجهيز صفحة الاختبار...")
                 PrintEngine.printBitmap(this, buildTestPage())
                 setStatus("اتبعتت صفحة الاختبار للطابعة ✔")
-            } catch (e: Exception) {
-                setStatus("خطأ: ${e.message}")
+            } catch (e: Throwable) {
+                setStatus("خطأ: $e")
             }
         }.start()
     }
@@ -123,8 +149,8 @@ class MainActivity : ComponentActivity() {
                     setStatus("جاري طباعة صفحة $page من $total ...")
                 })
                 setStatus("تمت الطباعة ✔")
-            } catch (e: Exception) {
-                setStatus("خطأ: ${e.message}")
+            } catch (e: Throwable) {
+                setStatus("خطأ: $e")
             }
         }.start()
     }
